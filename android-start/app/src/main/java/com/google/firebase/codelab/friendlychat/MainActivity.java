@@ -40,26 +40,13 @@ import android.widget.Toast;
 
 import com.bumptech.glide.Glide;
 import com.firebase.ui.database.FirebaseRecyclerAdapter;
-import com.google.android.gms.ads.AdRequest;
-import com.google.android.gms.ads.AdView;
-import com.google.android.gms.appinvite.AppInvite;
-import com.google.android.gms.appinvite.AppInviteInvitation;
 import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
-import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.OnSuccessListener;
-import com.google.firebase.analytics.FirebaseAnalytics;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.crash.FirebaseCrash;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.remoteconfig.FirebaseRemoteConfig;
-import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings;
-
-import java.util.HashMap;
-import java.util.Map;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
@@ -99,6 +86,9 @@ public class MainActivity extends AppCompatActivity
     // Firebase instance variables
     private FirebaseAuth mFirebaseAuth;
     private FirebaseUser mFirebaseUser;
+    private DatabaseReference mFirebaseDatabaseReference;
+    private FirebaseRecyclerAdapter<FriendlyMessage, MessageViewHolder>
+            mFirebaseAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -133,7 +123,54 @@ public class MainActivity extends AppCompatActivity
         mLinearLayoutManager.setStackFromEnd(true);
         mMessageRecyclerView.setLayoutManager(mLinearLayoutManager);
 
-        mProgressBar.setVisibility(ProgressBar.INVISIBLE);
+        // New child entries
+        mFirebaseDatabaseReference = FirebaseDatabase.getInstance().getReference();
+        mFirebaseAdapter = new FirebaseRecyclerAdapter<FriendlyMessage,
+                MessageViewHolder>(
+                FriendlyMessage.class,
+                R.layout.item_message,
+                MessageViewHolder.class,
+                mFirebaseDatabaseReference.child(MESSAGES_CHILD)) {
+
+            @Override
+            protected void populateViewHolder(MessageViewHolder viewHolder,
+                                              FriendlyMessage friendlyMessage, int position) {
+                mProgressBar.setVisibility(ProgressBar.INVISIBLE);
+                viewHolder.messageTextView.setText(friendlyMessage.getText());
+                viewHolder.messengerTextView.setText(friendlyMessage.getName());
+                if (friendlyMessage.getPhotoUrl() == null) {
+                    viewHolder.messengerImageView
+                            .setImageDrawable(ContextCompat
+                                    .getDrawable(MainActivity.this,
+                                            R.drawable.ic_account_circle_black_36dp));
+                } else {
+                    Glide.with(MainActivity.this)
+                            .load(friendlyMessage.getPhotoUrl())
+                            .into(viewHolder.messengerImageView);
+                }
+            }
+        };
+
+        mFirebaseAdapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            @Override
+            public void onItemRangeInserted(int positionStart, int itemCount) {
+                super.onItemRangeInserted(positionStart, itemCount);
+                int friendlyMessageCount = mFirebaseAdapter.getItemCount();
+                int lastVisiblePosition =
+                        mLinearLayoutManager.findLastCompletelyVisibleItemPosition();
+                // If the recycler view is initially being loaded or the
+                // user is at the bottom of the list, scroll to the bottom
+                // of the list to show the newly added message.
+                if (lastVisiblePosition == -1 ||
+                        (positionStart >= (friendlyMessageCount - 1) &&
+                                lastVisiblePosition == (positionStart - 1))) {
+                    mMessageRecyclerView.scrollToPosition(positionStart);
+                }
+            }
+        });
+
+        mMessageRecyclerView.setLayoutManager(mLinearLayoutManager);
+        mMessageRecyclerView.setAdapter(mFirebaseAdapter);
 
         mMessageEditText = (EditText) findViewById(R.id.messageEditText);
         mMessageEditText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(mSharedPreferences
